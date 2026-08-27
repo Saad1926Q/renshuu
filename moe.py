@@ -1,3 +1,4 @@
+import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
@@ -32,3 +33,27 @@ class SwiGLUExpert(nn.Module):
         values = self.up_proj(x)
 
         return self.down_proj(gated * values)
+
+
+class TopKRouter(nn.Module):
+    def __init__(self, n_routed_experts: int, d_model: int, routed_top_k: int) -> None:
+        super().__init__()
+
+        self.n_routed_experts = n_routed_experts
+        self.d_model = d_model
+        self.routed_top_k = routed_top_k
+
+        self.weights = nn.Parameter(torch.randn((n_routed_experts, d_model)))
+
+    def forward(self, tokens: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        # Receives tokens shaped [T, d_model]
+
+        logits = F.linear(tokens, self.weights)
+
+        router_probs = F.softmax(logits.float(), dim=-1)
+
+        topk_weights, topk_indices = torch.topk(
+            input=router_probs, k=self.routed_top_k, dim=-1
+        )
+
+        return logits, router_probs, topk_weights, topk_indices
